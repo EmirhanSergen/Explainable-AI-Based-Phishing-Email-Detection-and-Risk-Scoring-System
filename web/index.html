@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phishing Email Detection</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <h1>Phishing Email Detection</h1>
+    <p class="subtitle">Explainable AI-Based Risk Scoring System</p>
+
+    <section class="input-section">
+      <textarea id="emailText" placeholder="E-posta metnini buraya yapıştırın..."></textarea>
+      <button id="analyzeBtn">Analyze</button>
+    </section>
+
+    <section id="results" class="results-section hidden">
+      <div class="result-card prediction-card">
+        <h2>Prediction</h2>
+        <p id="prediction"></p>
+        <p id="probability"></p>
+      </div>
+
+      <div class="result-card risk-card">
+        <h2>Risk Score</h2>
+        <p id="riskScore"></p>
+        <p id="riskLevel"></p>
+      </div>
+
+      <div class="result-card components-card">
+        <h2>Risk Components</h2>
+        <p>S_prob: <span id="sProb"></span></p>
+        <p>S_url: <span id="sUrl"></span></p>
+        <p>S_kw: <span id="sKw"></span></p>
+      </div>
+
+      <div class="result-card indicators-card">
+        <h2>Top Indicators</h2>
+        <ul id="topIndicators"></ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
