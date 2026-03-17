@@ -2,10 +2,15 @@
 API route tanımları.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from api.dependencies import EmailAnalyzer, get_analyzer
-from api.schemas import AnalyzeRequest, AnalyzeResponse
+from api.dependencies import (
+    EmailAnalyzer,
+    get_analyzer,
+    get_random_sample_email,
+    load_model_metrics,
+)
+from api.schemas import AnalyzeRequest, AnalyzeResponse, SampleEmailResponse
 
 router = APIRouter()
 
@@ -26,3 +31,21 @@ def analyze_email(
     risk_components, top_indicators.
     """
     return analyzer.analyze(request.text)
+
+
+@router.get("/sample_email", response_model=SampleEmailResponse)
+def sample_email():
+    """Return a random saved email from the persisted test split."""
+    try:
+        return get_random_sample_email()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/model_metrics")
+def model_metrics():
+    """Return persisted training metrics for the main and hybrid models."""
+    try:
+        return load_model_metrics()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

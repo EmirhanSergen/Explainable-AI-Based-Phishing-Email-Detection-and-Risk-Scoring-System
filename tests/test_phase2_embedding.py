@@ -33,7 +33,11 @@ def test_train_embedding_hybrid_model_and_predict():
         TRAIN_LABELS,
         embedding_model=FakeEmbeddingModel(),
     )
-    result = predict(model, ["verify password now", "team project update"])
+    result = predict(
+        model,
+        ["verify password now", "team project update"],
+        embedding_model=FakeEmbeddingModel(),
+    )
 
     assert len(result["predictions"]) == 2
     assert all(0.0 <= prob <= 1.0 for prob in result["probabilities"])

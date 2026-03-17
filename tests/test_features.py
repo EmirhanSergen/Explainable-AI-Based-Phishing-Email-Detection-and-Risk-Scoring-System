@@ -2,6 +2,7 @@
 
 import pytest
 from phishing_ai.features import (
+    get_tfidf_vectorizer,
     normalize_text,
     extract_url_count,
     has_url,
@@ -31,6 +32,16 @@ def test_extract_keyword_count():
     assert extract_keyword_count("verify your account") >= 2
 
 
+def test_extract_keyword_count_uses_keyword_boundaries():
+    assert extract_keyword_count("our accountant sent the report") == 0
+
+
+def test_extract_keyword_count_weights_strong_keywords_more_than_weak():
+    weak_only = extract_keyword_count("please review your account summary")
+    strong_only = extract_keyword_count("verify your password immediately")
+    assert strong_only > weak_only
+
+
 def test_extract_security_features():
     feats = extract_security_features(
         "Urgent: verify your account and reset password at https://x.com"
@@ -41,3 +52,16 @@ def test_extract_security_features():
     assert feats["has_urgent_word"] is True
     assert feats["has_credential_word"] is True
     assert feats["has_account_word"] is True
+
+
+def test_extract_security_features_uses_keyword_boundaries_for_boolean_flags():
+    feats = extract_security_features("our accountant sent the monthly report")
+    assert feats["has_account_word"] is False
+
+
+def test_get_tfidf_vectorizer_uses_denoising_defaults():
+    vectorizer = get_tfidf_vectorizer()
+    assert vectorizer.stop_words == "english"
+    assert vectorizer.sublinear_tf is True
+    assert vectorizer.min_df >= 1
+    assert 0 < vectorizer.max_df <= 1.0

@@ -3,6 +3,66 @@
 import pandas as pd
 
 
+def _fake_hf_iter():
+    """Fake HF streaming iterator (no network)."""
+    rows = [
+        {"Email Text": "Click here to verify your account now", "Email Type": "Phishing Email"},
+        {"Email Text": "Team meeting tomorrow at 3pm", "Email Type": "Safe Email"},
+        {"Email Text": "Reset password immediately", "Email Type": "Phishing Email"},
+        {"Email Text": "", "Email Type": "Safe Email"},
+        {"Email Text": "  ", "Email Type": "Phishing Email"},
+    ]
+    for r in rows:
+        yield r
+
+
+def test_load_hf_phishing_email_dataset_monkeypatch(monkeypatch):
+    """HF loader returns normalized text/label without network."""
+    from phishing_ai.data import load_hf_phishing_email_dataset
+
+    def fake_load(name, split="train", streaming=False, **kw):
+        class FakeIter:
+            def __iter__(self):
+                return _fake_hf_iter()
+
+        return FakeIter()
+
+    monkeypatch.setattr("datasets.load_dataset", fake_load)
+
+    df = load_hf_phishing_email_dataset(max_rows=10)
+    assert "text" in df.columns and "label" in df.columns
+    assert len(df) == 3
+    assert set(df["label"]) <= {"phishing", "legitimate"}
+    texts = df["text"].str.lower()
+    assert any("click" in t for t in texts)
+
+
+def test_load_combined_dataset_dedup_and_labels(tmp_path):
+    """Combined dataset deduplicates and maps labels correctly."""
+    import unittest.mock as mock
+
+    from phishing_ai.data import load_combined_dataset
+
+    ceas_path = tmp_path / "ceas.csv"
+    pd.DataFrame(
+        {"subject": ["A"], "body": ["Duplicate text here"], "label": [1]},
+    ).to_csv(ceas_path, index=False)
+
+    def fake_load_hf(max_rows=None, split="train", dataset_name=""):
+        return pd.DataFrame(
+            {"text": ["duplicate text here", "Unique HF email"], "label": ["legitimate", "phishing"]},
+        )
+
+    import phishing_ai.data as data_module
+
+    with mock.patch.object(data_module, "load_hf_phishing_email_dataset", fake_load_hf):
+        combined = load_combined_dataset(ceas_path=ceas_path, hf_max_rows=100, add_source=True)
+    assert "source" in combined.columns
+    assert "text" in combined.columns and "label" in combined.columns
+    assert set(combined["label"]) <= {"phishing", "legitimate"}
+    assert combined["source"].nunique() >= 1
+
+
 def test_clean_text():
     from phishing_ai.data import clean_text
 

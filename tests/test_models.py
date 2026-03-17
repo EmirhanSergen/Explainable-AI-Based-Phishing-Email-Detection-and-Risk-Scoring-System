@@ -53,6 +53,18 @@ def test_compare_models_returns_metrics_for_expected_models():
     assert "f1" in metrics["logistic_regression"]
 
 
+def test_select_probability_threshold_prioritizes_recall_with_precision_floor():
+    from phishing_ai.models import select_probability_threshold
+
+    threshold = select_probability_threshold(
+        ["phishing", "phishing", "legitimate", "legitimate"],
+        [0.92, 0.81, 0.7, 0.2],
+        min_precision=0.7,
+    )
+
+    assert 0.7 < threshold <= 0.81
+
+
 def test_save_and_load_model_round_trip(tmp_path):
     from phishing_ai.models import load_model, save_model, train_main_model
 

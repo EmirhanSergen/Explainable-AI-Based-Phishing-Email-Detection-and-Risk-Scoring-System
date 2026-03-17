@@ -2,10 +2,20 @@
 Metin normalizasyonu, TF-IDF ve security feature çıkarımı.
 """
 
+from functools import lru_cache
 import re
 
 import numpy as np
-from phishing_ai.config import CRITICAL_KEYWORDS, TFIDF_MAX_FEATURES, TFIDF_NGRAM_RANGE
+from phishing_ai.config import (
+    STRONG_CRITICAL_KEYWORDS,
+    TFIDF_MAX_DF,
+    TFIDF_MAX_FEATURES,
+    TFIDF_MIN_DF,
+    TFIDF_NGRAM_RANGE,
+    TFIDF_STOP_WORDS,
+    TFIDF_SUBLINEAR_TF,
+    WEAK_CRITICAL_KEYWORDS,
+)
 
 URGENT_KEYWORDS = (
     "urgent",
@@ -90,14 +100,31 @@ def has_url(text: str) -> bool:
 
 
 def extract_keyword_count(text: str) -> int:
-    """Kritik kelime sayısı."""
+    """Weighted keyword count with regex boundaries to reduce false positives."""
     text_lower = normalize_text(text)
-    return sum(1 for kw in CRITICAL_KEYWORDS if kw in text_lower)
+    score = 0
+    for keyword in STRONG_CRITICAL_KEYWORDS:
+        if _keyword_matches(text_lower, keyword):
+            score += 2
+    for keyword in WEAK_CRITICAL_KEYWORDS:
+        if _keyword_matches(text_lower, keyword):
+            score += 1
+    return score
+
+
+@lru_cache(maxsize=None)
+def _compile_keyword_pattern(keyword: str) -> re.Pattern[str]:
+    escaped_keyword = re.escape(keyword.lower()).replace(r"\ ", r"\s+")
+    return re.compile(rf"(?<!\w){escaped_keyword}(?!\w)", re.IGNORECASE)
+
+
+def _keyword_matches(text: str, keyword: str) -> bool:
+    return bool(_compile_keyword_pattern(keyword).search(text))
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
     text_lower = normalize_text(text)
-    return any(keyword in text_lower for keyword in keywords)
+    return any(_keyword_matches(text_lower, keyword) for keyword in keywords)
 
 
 def extract_security_features(text: str) -> dict:
@@ -112,15 +139,23 @@ def extract_security_features(text: str) -> dict:
     }
 
 
-def get_tfidf_vectorizer():
+def get_tfidf_vectorizer(**overrides):
     """TF-IDF vektörizer tanımı (unigram/bigram)."""
     from sklearn.feature_extraction.text import TfidfVectorizer
 
+    params = {
+        "max_features": TFIDF_MAX_FEATURES,
+        "ngram_range": TFIDF_NGRAM_RANGE,
+        "strip_accents": "unicode",
+        "lowercase": True,
+        "stop_words": TFIDF_STOP_WORDS,
+        "min_df": TFIDF_MIN_DF,
+        "max_df": TFIDF_MAX_DF,
+        "sublinear_tf": TFIDF_SUBLINEAR_TF,
+    }
+    params.update(overrides)
     return TfidfVectorizer(
-        max_features=TFIDF_MAX_FEATURES,
-        ngram_range=TFIDF_NGRAM_RANGE,
-        strip_accents="unicode",
-        lowercase=True,
+        **params,
     )
 
 

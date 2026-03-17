@@ -24,9 +24,9 @@ def compute_risk_score(
     p_phishing_final: float,
     url_count: int,
     keyword_count: int,
-    w_prob: float = W_PROB,
-    w_url: float = W_URL,
-    w_kw: float = W_KW,
+    w_prob: float | None = W_PROB,
+    w_url: float | None = W_URL,
+    w_kw: float | None = W_KW,
 ) -> float:
     """
     risk_score_0_100 = w_prob * S_prob + w_url * S_url + w_kw * S_kw
@@ -34,7 +34,10 @@ def compute_risk_score(
     s_prob = compute_s_prob(p_phishing_final)
     s_url = compute_s_url(url_count)
     s_kw = compute_s_kw(keyword_count)
-    return w_prob * s_prob + w_url * s_url + w_kw * s_kw
+    prob_weight = W_PROB if w_prob is None else w_prob
+    url_weight = W_URL if w_url is None else w_url
+    kw_weight = W_KW if w_kw is None else w_kw
+    return prob_weight * s_prob + url_weight * s_url + kw_weight * s_kw
 
 
 def get_risk_components(p_phishing_final: float, url_count: int, keyword_count: int) -> dict:

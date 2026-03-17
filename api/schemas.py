@@ -19,6 +19,14 @@ class RiskComponents(BaseModel):
     s_kw: float
 
 
+class RiskWeights(BaseModel):
+    """Risk-score weight configuration used by the selected model."""
+
+    w_prob: float
+    w_url: float
+    w_kw: float
+
+
 class TopIndicator(BaseModel):
     """Öne çıkan kelime göstergesi."""
 
@@ -34,5 +42,14 @@ class AnalyzeResponse(BaseModel):
     risk_score: float
     risk_level: str  # "Low" | "Medium" | "High" | "Critical"
     risk_components: RiskComponents
+    risk_weights: RiskWeights
     top_indicators_pos: list[TopIndicator]
     top_indicators_neg: list[TopIndicator]
+    group_contributions: dict | None = None
+
+
+class SampleEmailResponse(BaseModel):
+    """GET /sample_email response."""
+
+    text: str
+    label: str | None = None

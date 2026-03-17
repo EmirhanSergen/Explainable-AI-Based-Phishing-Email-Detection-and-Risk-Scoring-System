@@ -82,6 +82,22 @@ Faz 2 için `sentence-transformers` ile hibrit özellik uzayı kullanılabilir:
 - Logistic Regression hibrit modeli
 - çekirdek Faz 1 modeline karşı performans kıyası
 
+Eğitmek için:
+
+```bash
+python scripts/train.py --phase2
+```
+
+Daha hızlı deney (örneklem ile, önerilen):
+
+```bash
+python scripts/train.py --phase2-only --phase2-max-rows 8000
+```
+
+API’de hibrit modeli seçmek için:
+
+- `POST /analyze_email?model=hybrid`
+
 ## Test
 
 ```bash

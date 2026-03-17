@@ -1,0 +1,108 @@
+{
+  "main": {
+    "logistic_regression": {
+      "accuracy": 0.9556889286170349,
+      "precision": 0.97184420459878,
+      "recall": 0.9480430304417486,
+      "f1": 0.9597960838836751
+    },
+    "linear_svm": {
+      "accuracy": 0.9980845358191802,
+      "precision": 0.9979414455626715,
+      "recall": 0.9986266880292973,
+      "f1": 0.9982839492048965
+    },
+    "naive_bayes": {
+      "accuracy": 0.9369173796450007,
+      "precision": 0.9828058808871168,
+      "recall": 0.9027237354085603,
+      "f1": 0.9410641851586733
+    }
+  },
+  "hybrid": {
+    "logistic_regression_hybrid": {
+      "accuracy": 0.97375,
+      "precision": 0.9795686719636776,
+      "recall": 0.9729425028184893,
+      "f1": 0.9762443438914027
+    }
+  },
+  "main_v2": {
+    "accuracy": 0.76,
+    "precision": 0.7046979865771812,
+    "recall": 0.963302752293578,
+    "f1": 0.813953488372093,
+    "average_precision": 0.9833241024706871,
+    "brier_score": 0.04538512329166108,
+    "selected_threshold": 0.05153552636577858,
+    "false_negatives": 4,
+    "false_positives": 44,
+    "phishing_support": 109,
+    "legitimate_support": 91,
+    "validation": {
+      "accuracy": 0.77,
+      "precision": 0.7032258064516129,
+      "recall": 1.0,
+      "f1": 0.8257575757575758,
+      "average_precision": 0.9884680782211397,
+      "brier_score": 0.038275520400964665,
+      "selected_threshold": 0.05153552636577858,
+      "false_negatives": 0,
+      "false_positives": 46,
+      "phishing_support": 109,
+      "legitimate_support": 91,
+      "calibration_method": "sigmoid",
+      "vectorizer_params": {
+        "stop_words": "english",
+        "min_df": 1,
+        "max_df": 0.95,
+        "sublinear_tf": true
+      },
+      "risk_weights": {
+        "w_prob": 0.6,
+        "w_url": 0.25,
+        "w_kw": 0.15
+      },
+      "use_embeddings": false
+    }
+  },
+  "hybrid_v2": {
+    "accuracy": 0.81,
+    "precision": 0.7534246575342466,
+    "recall": 0.9821428571428571,
+    "f1": 0.8527131782945736,
+    "average_precision": 0.9890562327845515,
+    "brier_score": 0.05271485326039586,
+    "selected_threshold": 0.06969810322538923,
+    "false_negatives": 1,
+    "false_positives": 18,
+    "phishing_support": 56,
+    "legitimate_support": 44,
+    "validation": {
+      "accuracy": 0.85,
+      "precision": 0.7916666666666666,
+      "recall": 1.0,
+      "f1": 0.8837209302325582,
+      "average_precision": 0.9963450292397662,
+      "brier_score": 0.029799971921730783,
+      "selected_threshold": 0.06969810322538923,
+      "false_negatives": 0,
+      "false_positives": 15,
+      "phishing_support": 57,
+      "legitimate_support": 43,
+      "calibration_method": "sigmoid",
+      "vectorizer_params": {
+        "stop_words": "english",
+        "min_df": 2,
+        "max_df": 0.95,
+        "sublinear_tf": true
+      },
+      "risk_weights": {
+        "w_prob": 0.6,
+        "w_url": 0.25,
+        "w_kw": 0.15
+      },
+      "use_embeddings": true
+    }
+  }
+}

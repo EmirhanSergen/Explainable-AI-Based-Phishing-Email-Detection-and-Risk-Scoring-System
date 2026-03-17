@@ -7,21 +7,34 @@ from __future__ import annotations
 from pathlib import Path
 
 import joblib
+import numpy as np
 from scipy.sparse import csr_matrix, hstack
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    brier_score_loss,
+    f1_score,
+    precision_score,
+    recall_score,
+)
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 
+from phishing_ai.config import V2_MIN_PRECISION
 from phishing_ai.features import (
     build_embedding_matrix,
     build_security_feature_matrix,
+    get_embedding_model,
     get_security_feature_names,
     get_tfidf_vectorizer,
     normalize_text,
 )
+from phishing_ai.risk import compute_risk_score
 
-def _make_logistic_regression() -> LogisticRegression:
+
+def _make_logistic_regression(class_weight: str | dict | None = None) -> LogisticRegression:
     # SAGA is stable on large sparse matrices and reduces numerical warnings
     # compared to some default solvers on perfectly/semi-separable data.
     return LogisticRegression(
@@ -30,6 +43,7 @@ def _make_logistic_regression() -> LogisticRegression:
         penalty="l2",
         n_jobs=-1,
         random_state=42,
+        class_weight=class_weight,
     )
 
 
@@ -43,9 +57,10 @@ def _build_feature_matrix(
     fit=False,
     use_embeddings=False,
     embedding_model=None,
+    vectorizer_params: dict | None = None,
 ):
     prepared_texts = _prepare_texts(texts)
-    tfidf_vectorizer = vectorizer or get_tfidf_vectorizer()
+    tfidf_vectorizer = vectorizer or get_tfidf_vectorizer(**(vectorizer_params or {}))
     if fit:
         tfidf_matrix = tfidf_vectorizer.fit_transform(prepared_texts)
     else:
@@ -66,16 +81,30 @@ def _build_feature_matrix(
     return full_matrix, tfidf_vectorizer, fitted_embedding_model
 
 
-def _build_artifact(classifier, vectorizer, embedding_model=None, embedding_dims: int = 0) -> dict:
+def _build_artifact(
+    classifier,
+    vectorizer,
+    embedding_model_name: str | None = None,
+    embedding_dims: int = 0,
+    calibrated_classifier=None,
+    threshold: float = 0.5,
+    risk_weights: dict | None = None,
+    model_version: str = "v1",
+) -> dict:
     tfidf_feature_names = vectorizer.get_feature_names_out().tolist()
     embedding_feature_names = [
         f"embedding_{index}" for index in range(embedding_dims)
     ]
     return {
         "classifier": classifier,
+        "calibrated_classifier": calibrated_classifier,
         "vectorizer": vectorizer,
-        "embedding_model": embedding_model,
+        # Persist only the name; the model object is heavy and not reliably pickleable.
+        "embedding_model_name": embedding_model_name,
         "security_feature_names": get_security_feature_names(),
+        "threshold": threshold,
+        "risk_weights": risk_weights or {},
+        "model_version": model_version,
         "feature_names": tfidf_feature_names
         + get_security_feature_names()
         + embedding_feature_names,
@@ -89,6 +118,86 @@ def _metric_dict(y_true, y_pred) -> dict:
         "recall": recall_score(y_true, y_pred, pos_label="phishing", zero_division=0),
         "f1": f1_score(y_true, y_pred, pos_label="phishing", zero_division=0),
     }
+
+
+def _labels_from_probabilities(probabilities: list[float], threshold: float) -> list[str]:
+    return ["phishing" if probability >= threshold else "legitimate" for probability in probabilities]
+
+
+def select_probability_threshold(
+    y_true,
+    probabilities,
+    min_precision: float = V2_MIN_PRECISION,
+) -> float:
+    """Choose the highest-recall threshold that satisfies a minimum precision floor."""
+    if not probabilities:
+        return 0.5
+
+    best_threshold = 0.5
+    best_recall = -1.0
+    best_precision = -1.0
+    candidates = sorted({float(probability) for probability in probabilities}, reverse=True)
+    candidates.append(1.0)
+
+    for threshold in candidates:
+        predictions = _labels_from_probabilities(probabilities, threshold)
+        precision = precision_score(y_true, predictions, pos_label="phishing", zero_division=0)
+        recall = recall_score(y_true, predictions, pos_label="phishing", zero_division=0)
+        if precision < min_precision:
+            continue
+        if recall > best_recall or (recall == best_recall and precision > best_precision):
+            best_threshold = threshold
+            best_recall = recall
+            best_precision = precision
+
+    if best_recall >= 0:
+        return float(best_threshold)
+
+    # Fall back to the best F1 threshold if no candidate can satisfy the precision floor.
+    fallback_threshold = 0.5
+    best_f1 = -1.0
+    for threshold in candidates:
+        predictions = _labels_from_probabilities(probabilities, threshold)
+        score = f1_score(y_true, predictions, pos_label="phishing", zero_division=0)
+        if score > best_f1:
+            best_f1 = score
+            fallback_threshold = threshold
+    return float(fallback_threshold)
+
+
+def evaluate_probability_metrics(y_true, probabilities, threshold: float) -> dict:
+    predictions = _labels_from_probabilities(probabilities, threshold)
+    phishing_total = sum(1 for label in y_true if label == "phishing")
+    legitimate_total = sum(1 for label in y_true if label == "legitimate")
+    false_negatives = sum(
+        1
+        for actual, predicted in zip(y_true, predictions)
+        if actual == "phishing" and predicted != "phishing"
+    )
+    false_positives = sum(
+        1
+        for actual, predicted in zip(y_true, predictions)
+        if actual == "legitimate" and predicted == "phishing"
+    )
+    metrics = _metric_dict(y_true, predictions)
+    metrics.update(
+        {
+            "average_precision": average_precision_score(
+                [1 if label == "phishing" else 0 for label in y_true],
+                probabilities,
+            ),
+            "brier_score": brier_score_loss(
+                [1 if label == "phishing" else 0 for label in y_true],
+                probabilities,
+            ),
+            "selected_threshold": float(threshold),
+            "false_negatives": false_negatives,
+            "false_positives": false_positives,
+            "phishing_support": phishing_total,
+            "legitimate_support": legitimate_total,
+        }
+    )
+    return metrics
 
 
 def train_pioneer_model(X_train, y_train):
@@ -140,10 +249,15 @@ def train_embedding_hybrid_model(X_train, y_train, embedding_model=None):
     embedding_dims = getattr(X_matrix, "shape", (0, 0))[1] - (
         len(vectorizer.get_feature_names_out()) + len(get_security_feature_names())
     )
+    embedding_model_name = None
+    if fitted_embedding_model is not None:
+        embedding_model_name = getattr(fitted_embedding_model, "model_name", None) or getattr(
+            fitted_embedding_model, "name_or_path", None
+        )
     return _build_artifact(
         classifier,
         vectorizer,
-        embedding_model=fitted_embedding_model,
+        embedding_model_name=embedding_model_name,
         embedding_dims=max(embedding_dims, 0),
     )
 
@@ -169,6 +283,132 @@ def compare_models_with_embeddings(X_train, y_train, X_test, y_test, embedding_m
     return {"logistic_regression_hybrid": _metric_dict(y_test, predictions)}
 
 
+def _select_risk_weights(probabilities, texts, y_true, risk_weight_grid) -> dict:
+    best_weights = risk_weight_grid[0]
+    best_score = float("-inf")
+    security_matrix = build_security_feature_matrix(_prepare_texts(texts))
+
+    for candidate in risk_weight_grid:
+        risk_scores = [
+            compute_risk_score(
+                p_phishing_final=float(probability),
+                url_count=int(row[0]),
+                keyword_count=int(row[2]),
+                w_prob=candidate["w_prob"],
+                w_url=candidate["w_url"],
+                w_kw=candidate["w_kw"],
+            )
+            for probability, row in zip(probabilities, security_matrix)
+        ]
+        phishing_high = sum(
+            1
+            for label, score in zip(y_true, risk_scores)
+            if label == "phishing" and score >= 51
+        )
+        legitimate_low = sum(
+            1
+            for label, score in zip(y_true, risk_scores)
+            if label == "legitimate" and score <= 25
+        )
+        candidate_score = (2 * phishing_high) + legitimate_low
+        if candidate_score > best_score:
+            best_score = candidate_score
+            best_weights = candidate
+    return best_weights
+
+
+def train_optimized_model(
+    X_train,
+    y_train,
+    X_validation,
+    y_validation,
+    *,
+    vectorizer_params: dict | None = None,
+    risk_weight_grid,
+    use_embeddings: bool = False,
+    embedding_model=None,
+    min_precision: float = V2_MIN_PRECISION,
+    calibration_method: str = "sigmoid",
+    model_version: str = "v2",
+) -> tuple[dict, dict]:
+    X_train_matrix, vectorizer, fitted_embedding_model = _build_feature_matrix(
+        X_train,
+        fit=True,
+        use_embeddings=use_embeddings,
+        embedding_model=embedding_model,
+        vectorizer_params=vectorizer_params,
+    )
+    X_validation_matrix, _, _ = _build_feature_matrix(
+        X_validation,
+        vectorizer=vectorizer,
+        fit=False,
+        use_embeddings=use_embeddings,
+        embedding_model=fitted_embedding_model,
+    )
+
+    classifier = _make_logistic_regression(class_weight="balanced")
+    classifier.fit(X_train_matrix, y_train)
+
+    label_counts = {}
+    for label in y_train:
+        label_counts[label] = label_counts.get(label, 0) + 1
+    min_class_count = min(label_counts.values())
+    calibrated_classifier = None
+    probability_model = classifier
+    effective_calibration_method = "none"
+    if min_class_count >= 2:
+        calibration_cv = max(2, min(3, min_class_count))
+        calibrated_classifier = CalibratedClassifierCV(
+            estimator=_make_logistic_regression(class_weight="balanced"),
+            method=calibration_method,
+            cv=calibration_cv,
+        )
+        calibrated_classifier.fit(X_train_matrix, y_train)
+        probability_model = calibrated_classifier
+        effective_calibration_method = calibration_method
+
+    phishing_index = list(probability_model.classes_).index("phishing")
+    probabilities = probability_model.predict_proba(X_validation_matrix)[:, phishing_index].tolist()
+    threshold = select_probability_threshold(
+        y_validation,
+        probabilities,
+        min_precision=min_precision,
+    )
+    risk_weights = _select_risk_weights(probabilities, X_validation, y_validation, risk_weight_grid)
+    metrics = evaluate_probability_metrics(y_validation, probabilities, threshold)
+    metrics.update(
+        {
+            "calibration_method": effective_calibration_method,
+            "vectorizer_params": vectorizer_params or {},
+            "risk_weights": risk_weights,
+            "use_embeddings": use_embeddings,
+        }
+    )
+
+    embedding_dims = 0
+    if use_embeddings:
+        embedding_dims = getattr(X_train_matrix, "shape", (0, 0))[1] - (
+            len(vectorizer.get_feature_names_out()) + len(get_security_feature_names())
+        )
+    embedding_model_name = None
+    if fitted_embedding_model is not None:
+        embedding_model_name = getattr(fitted_embedding_model, "model_name", None) or getattr(
+            fitted_embedding_model, "name_or_path", None
+        )
+
+    artifact = _build_artifact(
+        classifier,
+        vectorizer,
+        embedding_model_name=embedding_model_name,
+        embedding_dims=max(embedding_dims, 0),
+        calibrated_classifier=calibrated_classifier,
+        threshold=threshold,
+        risk_weights=risk_weights,
+        model_version=model_version,
+    )
+    return artifact, metrics
+
+
 def save_model(model, path: str):
     """Model kaydet."""
     Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -180,19 +420,134 @@ def load_model(path: str):
     return joblib.load(path)
 
 
-def predict(model, X):
-    """Tahmin ve p_phishing_final döndür."""
+def _get_feature_group_slices(model) -> dict:
+    vectorizer = model.get("vectorizer")
+    if vectorizer is None:
+        return {"tfidf": slice(0, 0), "security": slice(0, 0), "embedding": slice(0, 0)}
+
+    tfidf_len = len(vectorizer.get_feature_names_out())
+    security_len = len(get_security_feature_names())
+    base_len = tfidf_len + security_len
+
+    expected_len = getattr(model.get("classifier"), "n_features_in_", base_len)
+    embedding_len = max(int(expected_len - base_len), 0)
+
+    return {
+        "tfidf": slice(0, tfidf_len),
+        "security": slice(tfidf_len, tfidf_len + security_len),
+        "embedding": slice(tfidf_len + security_len, tfidf_len + security_len + embedding_len),
+    }
+
+
+def _try_get_group_contributions(model, X_matrix) -> dict | None:
+    """
+    Return per-group logit contributions for binary LogisticRegression.
+    Uses linear decomposition: logit = bias + sum_i w_i * x_i
+    """
+    clf = model.get("classifier")
+    if clf is None or not hasattr(clf, "coef_"):
+        return None
+
+    coef = getattr(clf, "coef_", None)
+    intercept = getattr(clf, "intercept_", None)
+    if coef is None or intercept is None:
+        return None
+
+    coef = np.asarray(coef)
+    if coef.ndim != 2 or coef.shape[0] != 1:
+        # Only support binary logistic regression for now.
+        return None
+
+    w = coef[0]
+    slices = _get_feature_group_slices(model)
+    contributions = {"bias": float(np.asarray(intercept).ravel()[0])}
+
+    for group_name, sl in slices.items():
+        if sl.stop <= sl.start:
+            contributions[group_name] = 0.0
+            continue
+        # Sparse dot dense => (n_samples,)
+        group_score = X_matrix[:, sl].dot(w[sl])
+        contributions[group_name] = group_score.A1.tolist() if hasattr(group_score, "A1") else np.asarray(group_score).ravel().tolist()
+
+    return contributions
+
+
+def predict(model, X, embedding_model=None):
+    """Tahmin ve p_phishing_final döndür.
+
+    If the model was trained with embeddings, you can provide an `embedding_model`
+    (e.g. SentenceTransformer) to avoid re-loading it on every call.
+    """
+    # Hybrid models require embeddings during inference as well.
+    # Older artifacts may miss `embedding_model_name`, so we infer the need from
+    # the classifier's expected feature size.
+    if embedding_model is None:
+        embedding_model_name = model.get("embedding_model_name") or None
+        vectorizer = model.get("vectorizer")
+        if vectorizer is not None:
+            base_feature_count = len(vectorizer.get_feature_names_out()) + len(get_security_feature_names())
+            expected_feature_count = getattr(model.get("classifier"), "n_features_in_", base_feature_count)
+            needs_embeddings = expected_feature_count > base_feature_count
+        else:
+            needs_embeddings = bool(embedding_model_name)
+
+        if needs_embeddings:
+            embedding_model = get_embedding_model(embedding_model_name or "all-MiniLM-L6-v2")
     X_matrix, _, _ = _build_feature_matrix(
         X,
         vectorizer=model["vectorizer"],
         fit=False,
-        use_embeddings=model.get("embedding_model") is not None,
-        embedding_model=model.get("embedding_model"),
+        use_embeddings=embedding_model is not None,
+        embedding_model=embedding_model,
     )
-    probabilities = model["classifier"].predict_proba(X_matrix)
-    phishing_index = list(model["classifier"].classes_).index("phishing")
-    predictions = model["classifier"].predict(X_matrix).tolist()
+    probability_model = model.get("calibrated_classifier") or model["classifier"]
+    probabilities = probability_model.predict_proba(X_matrix)
+    phishing_index = list(probability_model.classes_).index("phishing")
+    threshold = float(model.get("threshold", 0.5))
+    predictions = _labels_from_probabilities(probabilities[:, phishing_index].tolist(), threshold)
     return {
         "predictions": predictions,
         "probabilities": probabilities[:, phishing_index].tolist(),
+    }
+
+
+def predict_with_group_contributions(model, X, embedding_model=None) -> dict:
+    """
+    Predict like `predict()`, plus optional group-level contribution breakdown.
+    For hybrid models, this answers "how much did embeddings contribute?" numerically.
+    """
+    # Reuse predict() logic to ensure embeddings are loaded when needed,
+    # but we need the built matrix too; so we mirror the matrix build here.
+    if embedding_model is None:
+        embedding_model_name = model.get("embedding_model_name") or None
+        vectorizer = model.get("vectorizer")
+        if vectorizer is not None:
+            base_feature_count = len(vectorizer.get_feature_names_out()) + len(get_security_feature_names())
+            expected_feature_count = getattr(model.get("classifier"), "n_features_in_", base_feature_count)
+            needs_embeddings = expected_feature_count > base_feature_count
+        else:
+            needs_embeddings = bool(embedding_model_name)
+
+        if needs_embeddings:
+            embedding_model = get_embedding_model(embedding_model_name or "all-MiniLM-L6-v2")
+
+    X_matrix, _, _ = _build_feature_matrix(
+        X,
+        vectorizer=model["vectorizer"],
+        fit=False,
+        use_embeddings=embedding_model is not None,
+        embedding_model=embedding_model,
+    )
+    probability_model = model.get("calibrated_classifier") or model["classifier"]
+    probabilities = probability_model.predict_proba(X_matrix)
+    phishing_index = list(probability_model.classes_).index("phishing")
+    threshold = float(model.get("threshold", 0.5))
+    predictions = _labels_from_probabilities(probabilities[:, phishing_index].tolist(), threshold)
+
+    group_contrib = _try_get_group_contributions(model, X_matrix)
+    return {
+        "predictions": predictions,
+        "probabilities": probabilities[:, phishing_index].tolist(),
+        "group_contributions": group_contrib,
     }

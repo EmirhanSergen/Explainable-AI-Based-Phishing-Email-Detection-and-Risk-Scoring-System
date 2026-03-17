@@ -3,47 +3,33 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Phishing Email Detection</title>
+  <title>Phishing Model Comparison</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main>
-    <h1>Phishing Email Detection</h1>
-    <p class="subtitle">Explainable AI-Based Risk Scoring System</p>
+    <h1>Phishing Model Comparison</h1>
+    <p class="subtitle">Main TF-IDF model vs. Hybrid TF-IDF + Embedding model</p>
 
     <section class="input-section">
+      <div class="input-header">
+        <div>
+          <h2>Email Playground</h2>
+          <p id="sampleMeta" class="sample-meta">Loading a saved test email...</p>
+        </div>
+        <div class="button-row">
+          <button id="generateBtn" class="secondary-btn" type="button">Generate Email</button>
+          <button id="analyzeBtn" type="button">Analyze Both Models</button>
+        </div>
+      </div>
       <textarea id="emailText" placeholder="Paste the email content here..."></textarea>
-      <button id="analyzeBtn">Analyze</button>
     </section>
 
     <section id="results" class="results-section hidden">
-      <div class="result-card prediction-card">
-        <h2>Prediction</h2>
-        <p id="prediction"></p>
-        <p id="probability"></p>
-      </div>
-
-      <div class="result-card risk-card">
-        <h2>Risk Score</h2>
-        <p id="riskScore"></p>
-        <p id="riskLevel"></p>
-      </div>
-
-      <div class="result-card components-card">
-        <h2>Risk Components</h2>
-        <p>S_prob: <span id="sProb"></span></p>
-        <p>S_url: <span id="sUrl"></span></p>
-        <p>S_kw: <span id="sKw"></span></p>
-      </div>
-
-      <div class="result-card indicators-card">
-        <h2>Positive Indicators</h2>
-        <ul id="topIndicatorsPos"></ul>
-      </div>
-
-      <div class="result-card indicators-card">
-        <h2>Negative Indicators</h2>
-        <ul id="topIndicatorsNeg"></ul>
+      <div id="comparisonSummary" class="summary-banner"></div>
+      <div class="comparison-grid">
+        <article id="mainResult" class="model-result"></article>
+        <article id="hybridResult" class="model-result"></article>
       </div>
     </section>
   </main>
