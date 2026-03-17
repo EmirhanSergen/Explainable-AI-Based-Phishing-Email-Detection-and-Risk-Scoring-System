@@ -2,8 +2,9 @@
 API route tanımları.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from api.dependencies import EmailAnalyzer, get_analyzer
 from api.schemas import AnalyzeRequest, AnalyzeResponse
 
 router = APIRouter()
@@ -16,10 +17,12 @@ def health_check():
 
 
 @router.post("/analyze_email", response_model=AnalyzeResponse)
-def analyze_email(request: AnalyzeRequest):
+def analyze_email(
+    request: AnalyzeRequest,
+    analyzer: EmailAnalyzer = Depends(get_analyzer),
+):
     """
     E-posta analizi: prediction, probability, risk_score, risk_level,
     risk_components, top_indicators.
     """
-    # TODO: get_analyzer() ile analiz yap
-    raise NotImplementedError("Analyze endpoint implement edilecek")
+    return analyzer.analyze(request.text)

@@ -32,7 +32,12 @@ def test_extract_keyword_count():
 
 
 def test_extract_security_features():
-    feats = extract_security_features("verify https://x.com password")
+    feats = extract_security_features(
+        "Urgent: verify your account and reset password at https://x.com"
+    )
     assert feats["url_count"] == 1
     assert feats["has_url"] is True
-    assert feats["keyword_count"] >= 2
+    assert feats["keyword_count"] >= 3
+    assert feats["has_urgent_word"] is True
+    assert feats["has_credential_word"] is True
+    assert feats["has_account_word"] is True

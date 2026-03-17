@@ -6,6 +6,7 @@ from phishing_ai.risk import (
     compute_s_url,
     compute_s_kw,
     compute_risk_score,
+    get_risk_components,
     get_risk_level,
 )
 
@@ -30,6 +31,13 @@ def test_compute_s_kw():
 def test_compute_risk_score():
     score = compute_risk_score(p_phishing_final=0.87, url_count=3, keyword_count=3)
     assert 0 <= score <= 100
+
+
+def test_get_risk_components():
+    components = get_risk_components(p_phishing_final=0.87, url_count=3, keyword_count=3)
+    assert components["s_prob"] == 87.0
+    assert components["s_url"] == 75.0
+    assert components["s_kw"] == 60.0
 
 
 def test_get_risk_level():

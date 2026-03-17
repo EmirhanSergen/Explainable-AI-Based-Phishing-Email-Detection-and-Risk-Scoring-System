@@ -104,6 +104,12 @@ h1 {
   margin: 0.25rem 0;
 }
 
+.components-card p {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .risk-level-low { color: var(--success); }
 .risk-level-medium { color: var(--warning); }
 .risk-level-high { color: var(--danger); }
@@ -120,4 +126,12 @@ h1 {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
+}
+
+#topIndicatorsPos li span:last-child {
+  color: var(--danger);
+}
+
+#topIndicatorsNeg li span:last-child {
+  color: var(--success);
 }

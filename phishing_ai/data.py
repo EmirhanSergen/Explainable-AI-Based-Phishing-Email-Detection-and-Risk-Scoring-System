@@ -2,24 +2,108 @@
 Dataset yükleme, temizleme ve train/test split.
 """
 
+from __future__ import annotations
 
-def load_dataset():
-    """Dataset yükle (Hugging Face zefang-liu/phishing-email-dataset)."""
-    raise NotImplementedError("Dataset yükleme implement edilecek")
+import re
+from pathlib import Path
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+TEXT_COLUMN_CANDIDATES = ("text", "body", "message", "email", "content")
+SUBJECT_COLUMN_CANDIDATES = ("subject", "title")
+LABEL_COLUMN_CANDIDATES = ("label", "class", "target")
+
+
+def _find_first_column(df: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
+    lowered_to_original = {column.lower(): column for column in df.columns}
+    for candidate in candidates:
+        if candidate in lowered_to_original:
+            return lowered_to_original[candidate]
+    return None
+
+
+def _normalize_label(value) -> str | None:
+    if pd.isna(value):
+        return None
+
+    normalized = str(value).strip().lower()
+    phishing_values = {"1", "true", "spam", "phishing", "phish", "malicious"}
+    legitimate_values = {"0", "false", "ham", "legitimate", "safe", "benign"}
+
+    if normalized in phishing_values:
+        return "phishing"
+    if normalized in legitimate_values:
+        return "legitimate"
+    return None
+
+
+def load_dataset(csv_path: str | Path = "data/raw/CEAS_08.csv") -> pd.DataFrame:
+    """Load the local CEAS_08 CSV and normalize it into text/label columns."""
+    df = pd.read_csv(csv_path)
+    return prepare_dataset(df)
 
 
 def clean_text(text: str) -> str:
     """Metin temizleme."""
     if not text or not isinstance(text, str):
         return ""
-    return text.strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 
-def prepare_dataset(df):
-    """Dataset hazırlığı: temizlik, split, p_phishing_baseline ekleme."""
-    raise NotImplementedError("Dataset hazırlığı implement edilecek")
+def prepare_dataset(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize the input dataset to a clean text/label dataframe."""
+    label_column = _find_first_column(df, LABEL_COLUMN_CANDIDATES)
+    if not label_column:
+        raise ValueError("Dataset must contain a label column")
+
+    text_column = _find_first_column(df, TEXT_COLUMN_CANDIDATES)
+    subject_column = _find_first_column(df, SUBJECT_COLUMN_CANDIDATES)
+
+    if not text_column and not subject_column:
+        raise ValueError("Dataset must contain a body/text or subject column")
+
+    if text_column:
+        body_series = df[text_column].fillna("").map(clean_text)
+    else:
+        body_series = pd.Series([""] * len(df), index=df.index, dtype="object")
+
+    if subject_column:
+        subject_series = df[subject_column].fillna("").map(clean_text)
+        text_series = (subject_series + " " + body_series).map(clean_text)
+    else:
+        text_series = body_series
+
+    normalized_labels = df[label_column].map(_normalize_label)
+    prepared = pd.DataFrame({"text": text_series, "label": normalized_labels})
+    prepared = prepared[prepared["text"] != ""]
+    prepared = prepared[prepared["label"].notna()]
+    return prepared.reset_index(drop=True)
 
 
-def get_train_test_split(df, test_size=0.2, random_state=42):
+def get_train_test_split(df: pd.DataFrame, test_size=0.2, random_state=42):
     """Train/test split."""
-    raise NotImplementedError("Split implement edilecek")
+    stratify_labels = None
+    label_counts = df["label"].value_counts()
+    n_classes = df["label"].nunique()
+    if isinstance(test_size, float):
+        n_test = int(round(len(df) * test_size))
+    else:
+        n_test = int(test_size)
+
+    if not label_counts.empty and label_counts.min() >= 2 and n_test >= n_classes:
+        stratify_labels = df["label"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        df["text"],
+        df["label"],
+        test_size=test_size,
+        random_state=random_state,
+        stratify=stratify_labels,
+    )
+    return (
+        X_train.reset_index(drop=True),
+        X_test.reset_index(drop=True),
+        y_train.reset_index(drop=True),
+        y_test.reset_index(drop=True),
+    )

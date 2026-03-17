@@ -37,6 +37,15 @@ def compute_risk_score(
     return w_prob * s_prob + w_url * s_url + w_kw * s_kw
 
 
+def get_risk_components(p_phishing_final: float, url_count: int, keyword_count: int) -> dict:
+    """Return the individual risk-score components for API/UI reporting."""
+    return {
+        "s_prob": compute_s_prob(p_phishing_final),
+        "s_url": compute_s_url(url_count),
+        "s_kw": compute_s_kw(keyword_count),
+    }
+
+
 def get_risk_level(risk_score: float) -> str:
     """
     risk_level: Low (0–25), Medium (26–50), High (51–75), Critical (76–100)

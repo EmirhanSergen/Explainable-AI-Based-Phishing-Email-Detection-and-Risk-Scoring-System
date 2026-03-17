@@ -34,4 +34,5 @@ class AnalyzeResponse(BaseModel):
     risk_score: float
     risk_level: str  # "Low" | "Medium" | "High" | "Critical"
     risk_components: RiskComponents
-    top_indicators: list[TopIndicator]
+    top_indicators_pos: list[TopIndicator]
+    top_indicators_neg: list[TopIndicator]

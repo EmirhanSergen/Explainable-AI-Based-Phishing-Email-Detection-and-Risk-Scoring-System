@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,7 +12,7 @@
     <p class="subtitle">Explainable AI-Based Risk Scoring System</p>
 
     <section class="input-section">
-      <textarea id="emailText" placeholder="E-posta metnini buraya yapıştırın..."></textarea>
+      <textarea id="emailText" placeholder="Paste the email content here..."></textarea>
       <button id="analyzeBtn">Analyze</button>
     </section>
 
@@ -37,8 +37,13 @@
       </div>
 
       <div class="result-card indicators-card">
-        <h2>Top Indicators</h2>
-        <ul id="topIndicators"></ul>
+        <h2>Positive Indicators</h2>
+        <ul id="topIndicatorsPos"></ul>
+      </div>
+
+      <div class="result-card indicators-card">
+        <h2>Negative Indicators</h2>
+        <ul id="topIndicatorsNeg"></ul>
       </div>
     </section>
   </main>

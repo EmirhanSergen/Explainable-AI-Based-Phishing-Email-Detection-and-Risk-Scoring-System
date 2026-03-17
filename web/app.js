@@ -1,9 +1,9 @@
 /**
  * Phishing Email Detection - Frontend
- * API base URL: http://localhost:8000
+ * API base URL: same origin
  */
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "";
 
 const emailText = document.getElementById("emailText");
 const analyzeBtn = document.getElementById("analyzeBtn");
@@ -12,7 +12,7 @@ const resultsSection = document.getElementById("results");
 analyzeBtn.addEventListener("click", async () => {
   const text = emailText.value.trim();
   if (!text) {
-    alert("Lütfen e-posta metni girin.");
+    alert("Please enter an email before analyzing.");
     return;
   }
 
@@ -33,7 +33,7 @@ analyzeBtn.addEventListener("click", async () => {
     resultsSection.classList.remove("hidden");
   } catch (err) {
     console.error(err);
-    alert("Analiz sırasında hata oluştu. API çalışıyor mu?");
+    alert("The analysis request failed. Make sure the API is running and a trained model exists.");
   } finally {
     analyzeBtn.disabled = false;
     analyzeBtn.textContent = "Analyze";
@@ -54,9 +54,14 @@ function renderResults(data) {
   document.getElementById("sUrl").textContent = rc.s_url.toFixed(1);
   document.getElementById("sKw").textContent = rc.s_kw.toFixed(1);
 
-  const ul = document.getElementById("topIndicators");
-  ul.innerHTML = "";
-  (data.top_indicators || []).forEach(function (item) {
+  renderIndicatorList("topIndicatorsPos", data.top_indicators_pos || []);
+  renderIndicatorList("topIndicatorsNeg", data.top_indicators_neg || []);
+}
+
+function renderIndicatorList(elementId, indicators) {
+  const list = document.getElementById(elementId);
+  list.innerHTML = "";
+  indicators.forEach(function (item) {
     const li = document.createElement("li");
     li.innerHTML =
       "<span>" +
@@ -64,6 +69,6 @@ function renderResults(data) {
       "</span><span>" +
       (item.contribution * 100).toFixed(1) +
       "%</span>";
-    ul.appendChild(li);
+    list.appendChild(li);
   });
 }
