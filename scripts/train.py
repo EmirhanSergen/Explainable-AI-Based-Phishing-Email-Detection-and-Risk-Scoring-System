@@ -177,12 +177,16 @@ def _select_best_v2_candidate(
     *,
     use_embeddings: bool,
     embedding_model=None,
+    verbose: bool = True,
 ):
     X_subtrain, X_validation, y_subtrain, y_validation = _build_validation_split(X_train, y_train)
     best_metrics = None
     best_vectorizer_params = None
+    total = len(TFIDF_V2_PARAM_GRID)
 
-    for vectorizer_params in TFIDF_V2_PARAM_GRID:
+    for idx, vectorizer_params in enumerate(TFIDF_V2_PARAM_GRID, 1):
+        if verbose:
+            print(f"  [Grid {idx}/{total}] TF-IDF min_df={vectorizer_params.get('min_df', '?')} ...", flush=True)
         try:
             _, metrics = train_optimized_model(
                 X_subtrain,
@@ -197,6 +201,8 @@ def _select_best_v2_candidate(
                 model_version="v2",
             )
         except ValueError:
+            if verbose:
+                print(f"    -> Skipped (ValueError)", flush=True)
             continue
         if best_metrics is None:
             best_metrics = metrics
@@ -278,13 +284,16 @@ def run_v3_training_pipeline(
     samples_path: str | Path = TEST_SAMPLES_PATH,
 ) -> dict:
     """Train and persist the v3 main model on combined CEAS + HF dataset."""
+    print("Loading combined CEAS + HF dataset...", flush=True)
     dataset = load_combined_dataset(
         ceas_path=dataset_path,
         hf_max_rows=hf_max_rows,
         max_rows_total=max_rows_total,
         random_state=random_state,
     )
+    print(f"Dataset loaded: {len(dataset):,} rows (CEAS + HF, deduplicated)", flush=True)
     X_train, X_test, y_train, y_test = get_train_test_split(dataset, random_state=random_state)
+    print("main_v3: Grid search (CPU, TF-IDF + LR)...", flush=True)
     best_vectorizer_params, validation_metrics = _select_best_v2_candidate(
         X_train.tolist(),
         y_train.tolist(),
@@ -330,13 +339,16 @@ def run_phase2_hybrid_v3_pipeline(
     samples_path: str | Path = TEST_SAMPLES_PATH,
 ) -> dict:
     """Train and persist the v3 hybrid model on combined CEAS + HF dataset."""
+    print("Loading combined CEAS + HF dataset for hybrid_v3...", flush=True)
     dataset = load_combined_dataset(
         ceas_path=dataset_path,
         hf_max_rows=hf_max_rows,
         max_rows_total=max_rows_total,
         random_state=random_state,
     )
+    print(f"Dataset loaded: {len(dataset):,} rows", flush=True)
     X_train, X_test, y_train, y_test = get_train_test_split(dataset, random_state=random_state)
+    print("hybrid_v3: Grid search (embeddings may use GPU)...", flush=True)
     best_vectorizer_params, validation_metrics = _select_best_v2_candidate(
         X_train.tolist(),
         y_train.tolist(),
