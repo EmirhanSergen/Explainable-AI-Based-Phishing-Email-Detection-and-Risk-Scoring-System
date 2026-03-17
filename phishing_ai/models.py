@@ -21,6 +21,17 @@ from phishing_ai.features import (
     normalize_text,
 )
 
+def _make_logistic_regression() -> LogisticRegression:
+    # SAGA is stable on large sparse matrices and reduces numerical warnings
+    # compared to some default solvers on perfectly/semi-separable data.
+    return LogisticRegression(
+        max_iter=2000,
+        solver="saga",
+        penalty="l2",
+        n_jobs=-1,
+        random_state=42,
+    )
+
 
 def _prepare_texts(texts) -> list[str]:
     return [normalize_text(text) for text in texts]
@@ -86,7 +97,7 @@ def train_pioneer_model(X_train, y_train):
     p_phishing_baseline üretir.
     """
     X_matrix, vectorizer, _ = _build_feature_matrix(X_train, fit=True)
-    classifier = LogisticRegression(max_iter=1000, random_state=42)
+    classifier = _make_logistic_regression()
     classifier.fit(X_matrix, y_train)
     return _build_artifact(classifier, vectorizer)
 
@@ -104,7 +115,7 @@ def compare_models(X_train, y_train, X_test, y_test):
     X_test_matrix, _, _ = _build_feature_matrix(X_test, vectorizer=vectorizer, fit=False)
 
     models = {
-        "logistic_regression": LogisticRegression(max_iter=1000, random_state=42),
+        "logistic_regression": _make_logistic_regression(),
         "linear_svm": LinearSVC(random_state=42),
         "naive_bayes": MultinomialNB(),
     }
@@ -124,7 +135,7 @@ def train_embedding_hybrid_model(X_train, y_train, embedding_model=None):
         use_embeddings=True,
         embedding_model=embedding_model,
     )
-    classifier = LogisticRegression(max_iter=1000, random_state=42)
+    classifier = _make_logistic_regression()
     classifier.fit(X_matrix, y_train)
     embedding_dims = getattr(X_matrix, "shape", (0, 0))[1] - (
         len(vectorizer.get_feature_names_out()) + len(get_security_feature_names())
@@ -152,7 +163,7 @@ def compare_models_with_embeddings(X_train, y_train, X_test, y_test, embedding_m
         use_embeddings=True,
         embedding_model=fitted_embedding_model,
     )
-    classifier = LogisticRegression(max_iter=1000, random_state=42)
+    classifier = _make_logistic_regression()
     classifier.fit(X_train_matrix, y_train)
     predictions = classifier.predict(X_test_matrix)
     return {"logistic_regression_hybrid": _metric_dict(y_test, predictions)}

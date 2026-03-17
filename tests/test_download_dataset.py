@@ -46,8 +46,7 @@ def test_build_kaggle_download_command_targets_ceas08_file(tmp_path):
 
     assert command[:3] == ["kaggle", "datasets", "download"]
     assert "naserabdullahalam/phishing-email-dataset" in command
-    assert "CEAS_08.csv" in command
-    assert "--unzip" in command
+    assert "--force" in command
     assert str(tmp_path) in command
 
 
@@ -63,3 +62,43 @@ def test_download_dataset_raises_without_credentials(tmp_path, monkeypatch):
         assert "Kaggle credentials" in str(exc)
     else:
         raise AssertionError("Expected RuntimeError when Kaggle credentials are missing")
+
+
+def test_download_dataset_repairs_zipped_payload(tmp_path, monkeypatch):
+    from scripts.download_dataset import download_dataset
+
+    # Pretend we already have credentials so it won't raise.
+    monkeypatch.setenv("KAGGLE_USERNAME", "user")
+    monkeypatch.setenv("KAGGLE_KEY", "secret")
+
+    # Avoid any real network call to kaggle CLI.
+    monkeypatch.setattr("subprocess.run", lambda *args, **kwargs: None)
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir(parents=True)
+    # download_dataset() deletes the default expected zip name before running kaggle.
+    # Patch it so our pre-created zip remains.
+    monkeypatch.setattr("scripts.download_dataset.KAGGLE_ZIP", "payload.zip")
+    fake_zip = raw_dir / "payload.zip"
+
+    # Prevent the function from deleting our pre-created zip.
+    from pathlib import Path as _Path
+
+    original_unlink = _Path.unlink
+
+    def _safe_unlink(self, *args, **kwargs):
+        if self.name == "payload.zip":
+            return None
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(_Path, "unlink", _safe_unlink)
+
+    # Create a zip payload with the expected member.
+    from zipfile import ZipFile
+
+    with ZipFile(fake_zip, "w") as zf:
+        zf.writestr("CEAS_08.csv", "label,body\n1,verify your account\n")
+
+    result = download_dataset(data_dir=tmp_path)
+    assert result.exists()
+    assert result.read_text(encoding="utf-8").startswith("label,body")

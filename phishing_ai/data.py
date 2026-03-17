@@ -40,8 +40,53 @@ def _normalize_label(value) -> str | None:
 
 def load_dataset(csv_path: str | Path = "data/raw/CEAS_08.csv") -> pd.DataFrame:
     """Load the local CEAS_08 CSV and normalize it into text/label columns."""
-    df = pd.read_csv(csv_path)
-    return prepare_dataset(df)
+    # CEAS_08.csv may vary by encoding and delimiter/quoting rules depending on export.
+    # We try common encodings + delimiter sniffing, then fall back to a permissive parser.
+    last_error: Exception | None = None
+    encodings = ("utf-8", "utf-8-sig", "cp1252", "latin-1")
+
+    csv_path = Path(csv_path)
+    sanitized_path = csv_path
+
+    # Some CSV exports contain NUL bytes; the python csv engine cannot handle them.
+    # Create a sanitized copy in-place next to the raw file.
+    try:
+        raw_bytes = csv_path.read_bytes()
+        if b"\x00" in raw_bytes:
+            sanitized_path = csv_path.with_suffix(".sanitized.csv")
+            sanitized_path.write_bytes(raw_bytes.replace(b"\x00", b""))
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Dataset not found at {csv_path}")
+
+    for encoding in encodings:
+        try:
+            df = pd.read_csv(
+                sanitized_path,
+                encoding=encoding,
+                sep=None,  # type: ignore[arg-type]
+                engine="python",  # enables sep=None sniffing
+                on_bad_lines="skip",
+            )
+            return prepare_dataset(df)
+        except (UnicodeDecodeError, pd.errors.ParserError) as exc:
+            last_error = exc
+            continue
+
+    # Last resort: replace invalid characters and keep going with python engine.
+    try:
+        df = pd.read_csv(
+            sanitized_path,
+            encoding="utf-8",
+            encoding_errors="replace",  # type: ignore[arg-type]
+            sep=None,  # type: ignore[arg-type]
+            engine="python",
+            on_bad_lines="skip",
+        )
+        return prepare_dataset(df)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"Failed to parse dataset at {csv_path}. Last error: {last_error}. Final error: {exc}"
+        )
 
 
 def clean_text(text: str) -> str:
