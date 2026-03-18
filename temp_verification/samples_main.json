@@ -1,0 +1,17 @@
+{
+  "sample_count": 3,
+  "samples": [
+    {
+      "text": "HF phish verify account",
+      "label": "phishing"
+    },
+    {
+      "text": "HF phish urgent reset",
+      "label": "phishing"
+    },
+    {
+      "text": "Update Project update",
+      "label": "legitimate"
+    }
+  ]
+}

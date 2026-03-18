@@ -114,16 +114,61 @@ def _build_artifact(
 
 
 def _metric_dict(y_true, y_pred) -> dict:
+    normalized_y_true = _normalize_label_sequence(y_true)
+    normalized_y_pred = _normalize_label_sequence(y_pred)
     return {
-        "accuracy": accuracy_score(y_true, y_pred),
-        "precision": precision_score(y_true, y_pred, pos_label="phishing", zero_division=0),
-        "recall": recall_score(y_true, y_pred, pos_label="phishing", zero_division=0),
-        "f1": f1_score(y_true, y_pred, pos_label="phishing", zero_division=0),
+        "accuracy": accuracy_score(normalized_y_true, normalized_y_pred),
+        "precision": precision_score(
+            normalized_y_true,
+            normalized_y_pred,
+            pos_label="phishing",
+            zero_division=0,
+        ),
+        "recall": recall_score(
+            normalized_y_true,
+            normalized_y_pred,
+            pos_label="phishing",
+            zero_division=0,
+        ),
+        "f1": f1_score(
+            normalized_y_true,
+            normalized_y_pred,
+            pos_label="phishing",
+            zero_division=0,
+        ),
     }
 
 
 def _labels_from_probabilities(probabilities: list[float], threshold: float) -> list[str]:
     return ["phishing" if probability >= threshold else "legitimate" for probability in probabilities]
+
+
+def _normalize_label_value(value) -> str:
+    """Collapse array-like label wrappers into a single scalar string label."""
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0:
+            return _normalize_label_value(value.item())
+        flattened = value.reshape(-1).tolist()
+        if len(flattened) != 1:
+            raise ValueError(f"Expected scalar label, received array-like label: {value!r}")
+        return _normalize_label_value(flattened[0])
+    if isinstance(value, (list, tuple)):
+        if len(value) != 1:
+            raise ValueError(f"Expected scalar label, received nested label: {value!r}")
+        return _normalize_label_value(value[0])
+    return str(value)
+
+
+def _normalize_label_sequence(labels) -> list[str]:
+    if hasattr(labels, "tolist"):
+        labels = labels.tolist()
+    return [_normalize_label_value(label) for label in labels]
+
+
+def _normalize_probability_sequence(probabilities) -> list[float]:
+    if hasattr(probabilities, "tolist"):
+        probabilities = probabilities.tolist()
+    return [float(probability) for probability in probabilities]
 
 
 def select_probability_threshold(
@@ -132,19 +177,31 @@ def select_probability_threshold(
     min_precision: float = V2_MIN_PRECISION,
 ) -> float:
     """Choose the highest-recall threshold that satisfies a minimum precision floor."""
-    if not probabilities:
+    normalized_y_true = _normalize_label_sequence(y_true)
+    normalized_probabilities = _normalize_probability_sequence(probabilities)
+    if not normalized_probabilities:
         return 0.5
 
     best_threshold = 0.5
     best_recall = -1.0
     best_precision = -1.0
-    candidates = sorted({float(probability) for probability in probabilities}, reverse=True)
+    candidates = sorted(set(normalized_probabilities), reverse=True)
     candidates.append(1.0)
 
     for threshold in candidates:
-        predictions = _labels_from_probabilities(probabilities, threshold)
-        precision = precision_score(y_true, predictions, pos_label="phishing", zero_division=0)
-        recall = recall_score(y_true, predictions, pos_label="phishing", zero_division=0)
+        predictions = _labels_from_probabilities(normalized_probabilities, threshold)
+        precision = precision_score(
+            normalized_y_true,
+            predictions,
+            pos_label="phishing",
+            zero_division=0,
+        )
+        recall = recall_score(
+            normalized_y_true,
+            predictions,
+            pos_label="phishing",
+            zero_division=0,
+        )
         if precision < min_precision:
             continue
         if recall > best_recall or (recall == best_recall and precision > best_precision):
@@ -159,8 +216,13 @@ def select_probability_threshold(
     fallback_threshold = 0.5
     best_f1 = -1.0
     for threshold in candidates:
-        predictions = _labels_from_probabilities(probabilities, threshold)
-        score = f1_score(y_true, predictions, pos_label="phishing", zero_division=0)
+        predictions = _labels_from_probabilities(normalized_probabilities, threshold)
+        score = f1_score(
+            normalized_y_true,
+            predictions,
+            pos_label="phishing",
+            zero_division=0,
+        )
         if score > best_f1:
             best_f1 = score
             fallback_threshold = threshold
@@ -168,29 +230,31 @@ def select_probability_threshold(
 
 
 def evaluate_probability_metrics(y_true, probabilities, threshold: float) -> dict:
-    predictions = _labels_from_probabilities(probabilities, threshold)
-    phishing_total = sum(1 for label in y_true if label == "phishing")
-    legitimate_total = sum(1 for label in y_true if label == "legitimate")
+    normalized_y_true = _normalize_label_sequence(y_true)
+    normalized_probabilities = _normalize_probability_sequence(probabilities)
+    predictions = _labels_from_probabilities(normalized_probabilities, threshold)
+    phishing_total = sum(1 for label in normalized_y_true if label == "phishing")
+    legitimate_total = sum(1 for label in normalized_y_true if label == "legitimate")
     false_negatives = sum(
         1
-        for actual, predicted in zip(y_true, predictions)
+        for actual, predicted in zip(normalized_y_true, predictions)
         if actual == "phishing" and predicted != "phishing"
     )
     false_positives = sum(
         1
-        for actual, predicted in zip(y_true, predictions)
+        for actual, predicted in zip(normalized_y_true, predictions)
         if actual == "legitimate" and predicted == "phishing"
     )
-    metrics = _metric_dict(y_true, predictions)
+    metrics = _metric_dict(normalized_y_true, predictions)
     metrics.update(
         {
             "average_precision": average_precision_score(
-                [1 if label == "phishing" else 0 for label in y_true],
-                probabilities,
+                [1 if label == "phishing" else 0 for label in normalized_y_true],
+                normalized_probabilities,
             ),
             "brier_score": brier_score_loss(
-                [1 if label == "phishing" else 0 for label in y_true],
-                probabilities,
+                [1 if label == "phishing" else 0 for label in normalized_y_true],
+                normalized_probabilities,
             ),
             "selected_threshold": float(threshold),
             "false_negatives": false_negatives,

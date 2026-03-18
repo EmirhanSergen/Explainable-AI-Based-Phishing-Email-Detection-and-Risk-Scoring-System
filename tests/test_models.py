@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import numpy as np
+
 
 TRAIN_TEXTS = [
     "urgent verify your account now at https://evil.com",
@@ -63,6 +65,18 @@ def test_select_probability_threshold_prioritizes_recall_with_precision_floor():
     )
 
     assert 0.7 < threshold <= 0.81
+
+
+def test_select_probability_threshold_normalizes_wrapped_labels():
+    from phishing_ai.models import select_probability_threshold
+
+    threshold = select_probability_threshold(
+        np.asarray([["phishing"], ["phishing"], ["legitimate"], ["legitimate"]], dtype=object),
+        np.asarray([0.91, 0.82, 0.44, 0.11], dtype=float),
+        min_precision=0.7,
+    )
+
+    assert 0.44 < threshold <= 0.82
 
 
 def test_save_and_load_model_round_trip(tmp_path):

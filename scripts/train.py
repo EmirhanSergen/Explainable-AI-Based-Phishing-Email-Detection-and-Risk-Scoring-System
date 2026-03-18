@@ -301,11 +301,16 @@ def run_v3_training_pipeline(
     )
     if best_vectorizer_params is None or validation_metrics is None:
         raise RuntimeError("Failed to produce a v3 main model candidate.")
+    X_subtrain, X_validation, y_subtrain, y_validation = _build_validation_split(
+        X_train.tolist(),
+        y_train.tolist(),
+        random_state=random_state,
+    )
     best_model, _ = train_optimized_model(
-        X_train.tolist(),
-        y_train.tolist(),
-        X_train.tolist(),
-        y_train.tolist(),
+        X_subtrain,
+        y_subtrain,
+        X_validation,
+        y_validation,
         vectorizer_params=best_vectorizer_params,
         risk_weight_grid=V2_RISK_WEIGHT_GRID,
         use_embeddings=False,
@@ -357,11 +362,16 @@ def run_phase2_hybrid_v3_pipeline(
     )
     if best_vectorizer_params is None or validation_metrics is None:
         raise RuntimeError("Failed to produce a v3 hybrid model candidate.")
+    X_subtrain, X_validation, y_subtrain, y_validation = _build_validation_split(
+        X_train.tolist(),
+        y_train.tolist(),
+        random_state=random_state,
+    )
     best_model, _ = train_optimized_model(
-        X_train.tolist(),
-        y_train.tolist(),
-        X_train.tolist(),
-        y_train.tolist(),
+        X_subtrain,
+        y_subtrain,
+        X_validation,
+        y_validation,
         vectorizer_params=best_vectorizer_params,
         risk_weight_grid=V2_RISK_WEIGHT_GRID,
         use_embeddings=True,

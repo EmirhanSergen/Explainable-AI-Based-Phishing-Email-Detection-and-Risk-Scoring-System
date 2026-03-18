@@ -1,0 +1,46 @@
+{
+  "hybrid_v3": {
+    "accuracy": 0.3333333333333333,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "average_precision": 1.0,
+    "brier_score": 0.16695839712536473,
+    "selected_threshold": 0.809290322508529,
+    "false_negatives": 2,
+    "false_positives": 0,
+    "phishing_support": 2,
+    "legitimate_support": 1,
+    "validation": {
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "average_precision": 1.0,
+      "brier_score": 0.1069373600449342,
+      "selected_threshold": 0.809290322508529,
+      "false_negatives": 0,
+      "false_positives": 0,
+      "phishing_support": 1,
+      "legitimate_support": 1,
+      "calibration_method": "sigmoid",
+      "vectorizer_params": {
+        "stop_words": "english",
+        "min_df": 1,
+        "max_df": 0.95,
+        "sublinear_tf": true
+      },
+      "risk_weights": {
+        "w_prob": 0.5,
+        "w_url": 0.25,
+        "w_kw": 0.25
+      },
+      "risk_thresholds": {
+        "low_medium": 25,
+        "medium_high": 35,
+        "high_critical": 45
+      },
+      "use_embeddings": true
+    }
+  }
+}
