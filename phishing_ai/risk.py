@@ -49,14 +49,21 @@ def get_risk_components(p_phishing_final: float, url_count: int, keyword_count: 
     }
 
 
-def get_risk_level(risk_score: float) -> str:
+def get_risk_level(risk_score: float, thresholds: dict | None = None) -> str:
     """
-    risk_level: Low (0–25), Medium (26–50), High (51–75), Critical (76–100)
+    risk_level: Low / Medium / High / Critical.
+
+    Uses calibrated thresholds from the model artifact when provided,
+    otherwise falls back to the hardcoded defaults (25 / 50 / 75).
     """
-    if risk_score <= 25:
+    t1 = (thresholds or {}).get("low_medium", 25)
+    t2 = (thresholds or {}).get("medium_high", 50)
+    t3 = (thresholds or {}).get("high_critical", 75)
+
+    if risk_score < t1:
         return "Low"
-    if risk_score <= 50:
+    if risk_score < t2:
         return "Medium"
-    if risk_score <= 75:
+    if risk_score < t3:
         return "High"
     return "Critical"

@@ -22,7 +22,7 @@ from sklearn.metrics import (
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 
-from phishing_ai.config import V2_MIN_PRECISION
+from phishing_ai.config import V2_MIN_PRECISION, W_PROB, W_URL, W_KW
 from phishing_ai.features import (
     build_embedding_matrix,
     build_security_feature_matrix,
@@ -89,6 +89,7 @@ def _build_artifact(
     calibrated_classifier=None,
     threshold: float = 0.5,
     risk_weights: dict | None = None,
+    risk_thresholds: dict | None = None,
     model_version: str = "v1",
 ) -> dict:
     tfidf_feature_names = vectorizer.get_feature_names_out().tolist()
@@ -104,6 +105,7 @@ def _build_artifact(
         "security_feature_names": get_security_feature_names(),
         "threshold": threshold,
         "risk_weights": risk_weights or {},
+        "risk_thresholds": risk_thresholds or {},
         "model_version": model_version,
         "feature_names": tfidf_feature_names
         + get_security_feature_names()
@@ -317,6 +319,62 @@ def _select_risk_weights(probabilities, texts, y_true, risk_weight_grid) -> dict
     return best_weights
 
 
+def calibrate_risk_thresholds(
+    probabilities: list[float],
+    texts: list[str],
+    labels: list[str],
+    risk_weights: dict,
+) -> dict:
+    """Find optimal Low/Medium/High/Critical risk score boundaries from data.
+
+    Grid-searches (t1, t2, t3) triplets and maximises:
+        2 * (phishing emails with score >= t2) + (legitimate emails with score < t1)
+
+    Returns a dict with keys: low_medium, medium_high, high_critical.
+    """
+    w_prob = risk_weights.get("w_prob", W_PROB)
+    w_url = risk_weights.get("w_url", W_URL)
+    w_kw = risk_weights.get("w_kw", W_KW)
+
+    security_matrix = build_security_feature_matrix(_prepare_texts(texts))
+    risk_scores = [
+        compute_risk_score(
+            p_phishing_final=float(p),
+            url_count=int(row[0]),
+            keyword_count=int(row[2]),
+            w_prob=w_prob,
+            w_url=w_url,
+            w_kw=w_kw,
+        )
+        for p, row in zip(probabilities, security_matrix)
+    ]
+
+    best_score = -1
+    best_thresholds = {"low_medium": 25, "medium_high": 50, "high_critical": 75}
+
+    for t1 in range(10, 45, 5):
+        for t2 in range(t1 + 10, 70, 5):
+            for t3 in range(t2 + 10, 95, 5):
+                phishing_high = sum(
+                    1 for label, s in zip(labels, risk_scores)
+                    if label == "phishing" and s >= t2
+                )
+                legitimate_low = sum(
+                    1 for label, s in zip(labels, risk_scores)
+                    if label == "legitimate" and s < t1
+                )
+                candidate = (2 * phishing_high) + legitimate_low
+                if candidate > best_score:
+                    best_score = candidate
+                    best_thresholds = {
+                        "low_medium": t1,
+                        "medium_high": t2,
+                        "high_critical": t3,
+                    }
+
+    return best_thresholds
+
+
 def train_optimized_model(
     X_train,
     y_train,
@@ -375,12 +433,16 @@ def train_optimized_model(
         min_precision=min_precision,
     )
     risk_weights = _select_risk_weights(probabilities, X_validation, y_validation, risk_weight_grid)
+    risk_thresholds = calibrate_risk_thresholds(
+        probabilities, X_validation, y_validation, risk_weights
+    )
     metrics = evaluate_probability_metrics(y_validation, probabilities, threshold)
     metrics.update(
         {
             "calibration_method": effective_calibration_method,
             "vectorizer_params": vectorizer_params or {},
             "risk_weights": risk_weights,
+            "risk_thresholds": risk_thresholds,
             "use_embeddings": use_embeddings,
         }
     )
@@ -404,6 +466,7 @@ def train_optimized_model(
         calibrated_classifier=calibrated_classifier,
         threshold=threshold,
         risk_weights=risk_weights,
+        risk_thresholds=risk_thresholds,
         model_version=model_version,
     )
     return artifact, metrics

@@ -46,6 +46,7 @@ class EmailAnalyzer:
             "w_url": self.model.get("risk_weights", {}).get("w_url", W_URL),
             "w_kw": self.model.get("risk_weights", {}).get("w_kw", W_KW),
         }
+        risk_thresholds = self.model.get("risk_thresholds") or {}
         prediction_result = predict_with_group_contributions(
             self.model, [text], embedding_model=self.embedding_model
         )
@@ -73,9 +74,10 @@ class EmailAnalyzer:
             "prediction": prediction,
             "probability": probability,
             "risk_score": risk_score,
-            "risk_level": get_risk_level(risk_score),
+            "risk_level": get_risk_level(risk_score, thresholds=risk_thresholds),
             "risk_components": risk_components,
             "risk_weights": risk_weights,
+            "risk_thresholds": risk_thresholds,
             "top_indicators_pos": indicators["positive"],
             "top_indicators_neg": indicators["negative"],
             "group_contributions": prediction_result.get("group_contributions"),

@@ -1,4 +1,4 @@
-"""
+""""
 Konfigürasyon ve sabitler.
 """
 
@@ -103,8 +103,8 @@ RISK_THRESHOLDS = {
 # Model dosya yolları
 MODELS_DIR = "models"
 PIONEER_MODEL_PATH = "models/pioneer_model.pkl"
-MAIN_MODEL_PATH = "models/main_model.pkl"
-HYBRID_MODEL_PATH = "models/main_model_hybrid.pkl"
+MAIN_MODEL_PATH = "models/main_model_v3.pkl"
+HYBRID_MODEL_PATH = "models/main_model_hybrid_v3.pkl"
 MAIN_MODEL_V1_PATH = "models/main_model_v1.pkl"
 HYBRID_MODEL_V1_PATH = "models/main_model_hybrid_v1.pkl"
 MAIN_MODEL_V2_PATH = "models/main_model_v2.pkl"
